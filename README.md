@@ -24,8 +24,10 @@ Supports JPEG, PNG, WebP, GIF (animated), and AVIF. Free, fast, no API keys.
 | `quality` | no | `70` | Output quality (1-100) |
 | `resize` | no | | Max width in pixels |
 | `max-size` | no | | Fail if any output exceeds this size (e.g., `200kb`, `1mb`) |
-| `destination` | no | `.` | Output base directory |
-| `output-folder` | no | `bulki-output` | Output folder name |
+| `output` | no | `./bulki-output` | Folder where optimized images are written |
+| `bulki-version` | no | `3` | bulki version to run (npm version or range) |
+| `destination` | no | `.` | Deprecated — use `output` (base directory) |
+| `output-folder` | no | `bulki-output` | Deprecated — use `output` (folder name inside `destination`) |
 
 ## Outputs
 
@@ -45,7 +47,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Optimize images
         uses: PuntoyComaTech/bulki-action@v1
@@ -54,6 +56,7 @@ jobs:
           format: 'webp'
           quality: '80'
           resize: '1920'
+          output: './public/images-optimized'
 
       - name: Deploy
         run: # your deploy step
@@ -69,7 +72,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check image sizes
         uses: PuntoyComaTech/bulki-action@v1
@@ -109,12 +112,12 @@ If any image exceeds 200 KB after optimization, the action fails and the PR is b
 
 This action runs `npx @puntoycoma/bulki compress` with the specified options. It installs bulki on-the-fly via npx — no pre-installation required.
 
-Images are optimized in place within the `bulki-output/` directory (or your custom output folder). The original files are not modified.
+Optimized copies are written to the `output` folder (default `./bulki-output`), mirroring the folder structure. The original files are never modified. The step fails if any image can't be optimized or exceeds `max-size`, and each problem is shown as an annotation on the file.
 
 ## Requirements
 
 - Runs on `ubuntu-latest`, `macos-latest`, or `windows-latest`
-- Node.js 20+ (set up automatically by the action)
+- Node.js 24 is set up automatically by the action
 
 ## License
 
