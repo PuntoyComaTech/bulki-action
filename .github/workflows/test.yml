@@ -1,0 +1,61 @@
+name: Test action
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Convert to WebP (path with spaces, new `output` input)
+        id: webp
+        uses: ./
+        with:
+          path: 'tests/fixtures/my images'
+          format: 'webp'
+          quality: '80'
+          output: 'out webp'
+
+      - name: Check WebP output
+        shell: bash
+        env:
+          RESULT: ${{ steps.webp.outputs.json }}
+        run: |
+          test -s "out webp/sample.webp" && test -s "out webp/sample-png.webp"
+          node -e "const d = JSON.parse(process.env.RESULT); if (d.summary.totalFiles !== 2 || d.errors.length) process.exit(1)"
+
+      - name: Legacy destination / output-folder inputs
+        uses: ./
+        with:
+          path: 'tests/fixtures/my images'
+          destination: 'legacy'
+          output-folder: 'web'
+
+      - name: Check legacy output
+        shell: bash
+        run: test -s legacy/web/sample.jpg && test -s legacy/web/sample.png
+
+      - name: max-size budget must fail the step
+        id: budget
+        continue-on-error: true
+        uses: ./
+        with:
+          path: 'tests/fixtures/my images'
+          max-size: '1b'
+          output: 'out budget'
+
+      - name: Check that the budget step failed
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.budget.outcome }}
+        run: test "$OUTCOME" = "failure"

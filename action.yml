@@ -23,12 +23,19 @@ inputs:
   max-size:
     description: 'Fail if any output exceeds this size (e.g., 200kb, 1mb)'
     required: false
+  output:
+    description: 'Folder where optimized images are written (default: ./bulki-output). Originals are never modified.'
+    required: false
+  bulki-version:
+    description: 'bulki version to run (npm version or range)'
+    required: false
+    default: '3'
   destination:
-    description: 'Output base directory'
+    description: 'Deprecated: use `output`. Base directory; output goes to <destination>/<output-folder>'
     required: false
     default: '.'
   output-folder:
-    description: 'Output folder name'
+    description: 'Deprecated: use `output`. Output folder name inside `destination`'
     required: false
     default: 'bulki-output'
 
@@ -41,9 +48,9 @@ runs:
   using: 'composite'
   steps:
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
-        node-version: '20'
+        node-version: '24'
 
     - name: Run bulki
       id: bulki
@@ -56,6 +63,8 @@ runs:
         INPUT_MAX_SIZE: ${{ inputs.max-size }}
         INPUT_DESTINATION: ${{ inputs.destination }}
         INPUT_OUTPUT_FOLDER: ${{ inputs.output-folder }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_BULKI_VERSION: ${{ inputs.bulki-version }}
       run: |
         # Build argv as an array: each input stays exactly one argument
         # (no literal quotes, spaces in paths are safe, nothing is re-parsed by the shell)
@@ -63,13 +72,17 @@ runs:
         [ -n "$INPUT_FORMAT" ] && ARGS+=(-f "$INPUT_FORMAT")
         [ -n "$INPUT_RESIZE" ] && ARGS+=(-r "$INPUT_RESIZE")
         [ -n "$INPUT_MAX_SIZE" ] && ARGS+=(--max-size "$INPUT_MAX_SIZE")
-        # -d <base> -o <name>  →  <base>/<name>
-        ARGS+=(-d "$INPUT_DESTINATION" -o "$INPUT_OUTPUT_FOLDER")
+        if [ -n "$INPUT_OUTPUT" ]; then
+          ARGS+=(-o "$INPUT_OUTPUT")
+        else
+          # legacy inputs: -d <base> -o <name>  →  <base>/<name>
+          ARGS+=(-d "$INPUT_DESTINATION" -o "$INPUT_OUTPUT_FOLDER")
+        fi
 
         STATUS=0
-        RESULT=$(npx --yes @puntoycoma/bulki "${ARGS[@]}") || STATUS=$?
+        RESULT=$(npx --yes "@puntoycoma/bulki@$INPUT_BULKI_VERSION" "${ARGS[@]}") || STATUS=$?
 
-        EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+        EOF="BULKI_$(node -e "process.stdout.write(require('crypto').randomBytes(16).toString('hex'))")"
         {
           echo "json<<$EOF"
           echo "$RESULT"
