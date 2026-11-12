@@ -57,26 +57,32 @@ runs:
         INPUT_DESTINATION: ${{ inputs.destination }}
         INPUT_OUTPUT_FOLDER: ${{ inputs.output-folder }}
       run: |
-        ARGS="compress \"$INPUT_PATH\" -q \"$INPUT_QUALITY\""
+        # Build argv as an array: each input stays exactly one argument
+        # (no literal quotes, spaces in paths are safe, nothing is re-parsed by the shell)
+        ARGS=(compress "$INPUT_PATH" -q "$INPUT_QUALITY" --json)
+        [ -n "$INPUT_FORMAT" ] && ARGS+=(-f "$INPUT_FORMAT")
+        [ -n "$INPUT_RESIZE" ] && ARGS+=(-r "$INPUT_RESIZE")
+        [ -n "$INPUT_MAX_SIZE" ] && ARGS+=(--max-size "$INPUT_MAX_SIZE")
+        # -d <base> -o <name>  →  <base>/<name>
+        ARGS+=(-d "$INPUT_DESTINATION" -o "$INPUT_OUTPUT_FOLDER")
 
-        [ -n "$INPUT_FORMAT" ] && ARGS="$ARGS -f \"$INPUT_FORMAT\""
-        [ -n "$INPUT_RESIZE" ] && ARGS="$ARGS -r \"$INPUT_RESIZE\""
-        [ -n "$INPUT_MAX_SIZE" ] && ARGS="$ARGS --max-size \"$INPUT_MAX_SIZE\""
-        [ "$INPUT_DESTINATION" != "." ] && ARGS="$ARGS -d \"$INPUT_DESTINATION\""
-        [ "$INPUT_OUTPUT_FOLDER" != "bulki-output" ] && ARGS="$ARGS -o \"$INPUT_OUTPUT_FOLDER\""
-
-        ARGS="$ARGS --json"
-
-        RESULT=$(npx --yes @puntoycoma/bulki $ARGS)
+        STATUS=0
+        RESULT=$(npx --yes @puntoycoma/bulki "${ARGS[@]}") || STATUS=$?
 
         EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-        echo "json<<$EOF" >> $GITHUB_OUTPUT
-        echo "$RESULT" >> $GITHUB_OUTPUT
-        echo "$EOF" >> $GITHUB_OUTPUT
+        {
+          echo "json<<$EOF"
+          echo "$RESULT"
+          echo "$EOF"
+        } >> "$GITHUB_OUTPUT"
 
-        node -e "
-          const d = JSON.parse(process.argv[1]);
-          const s = d.summary;
-          console.log('Optimized ' + s.totalFiles + ' files | ' + Math.round(s.totalOriginalSize/1024) + ' KB -> ' + Math.round(s.totalNewSize/1024) + ' KB (' + s.totalReduction + '% reduction)');
-          if (s.errors > 0) console.log('Errors: ' + s.errors);
-        " "$RESULT"
+        if [ -n "$RESULT" ]; then
+          node -e "
+            const d = JSON.parse(process.argv[1]);
+            const s = d.summary;
+            console.log('Optimized ' + s.totalFiles + ' files | ' + Math.round(s.totalOriginalSize/1024) + ' KB -> ' + Math.round(s.totalNewSize/1024) + ' KB (' + s.totalReduction + '% reduction)');
+            for (const e of d.errors) console.log('::error file=' + e.file + '::' + e.message);
+            for (const f of d.files) if (f.exceeded) console.log('::error file=' + f.output + '::exceeds max-size');
+          " "$RESULT"
+        fi
+        exit $STATUS
